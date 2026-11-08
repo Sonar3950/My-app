@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Дневник" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Дневник</title>
+<link rel="manifest" href="manifest.json">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background-color: #0a0a0c;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Roboto', sans-serif;
+      overflow-x: hidden;
+      height: 100%;
+    }
+
+    /* На ПК центрируем как экран смартфона 412px, на телефоне — на весь экран */
+    @media (min-width: 500px) {
+      body {
+        background-color: #050507;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 12px;
+        padding-bottom: 20px;
+      }
+      #app-frame {
+        width: 412px;
+        height: 892px;
+        max-height: calc(100vh - 70px);
+        border-radius: 38px;
+        border: 6px solid #222226;
+        box-shadow: 0 25px 70px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255,255,255,0.06);
+        overflow: hidden;
+        position: relative;
+        background-color: #0a0a0c;
+      }
+    }
+
+    @media (max-width: 499px) {
+      #pc-helper-bar {
+        display: none !important;
+      }
+      #app-frame {
+        width: 100vw;
+        height: 100dvh;
+        position: relative;
+        overflow: hidden;
+        background-color: #0a0a0c;
+      }
+    }
+
+    /* Скрытие скроллбара при сохранении прокрутки */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Точные цвета и компоненты со скриншотов */
+    .card-surface {
+      background-color: #1c1c1e;
+      border-radius: 20px;
+    }
+
+    .grade-dashed-box {
+      border: 1.5px dashed #3d3d40;
+      background-color: #232326;
+      border-radius: 12px;
+    }
+
+    .grade-tile {
+      background-color: #2c2c2e;
+      border-radius: 14px;
+      height: 58px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .subject-gradient-header {
+      background: linear-gradient(180deg, #6b37f6 0%, #9946f2 55%, #ca54e4 100%);
+      border-radius: 0 0 26px 26px;
+    }
+
+    .diamond-badge {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      transform: rotate(45deg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .diamond-badge span {
+      transform: rotate(-45deg);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    /* Анимация переходов между экранами */
+    .screen-transition {
+      transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+    }
+
+    input, select {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Подсказка только для ПК (на телефоне автоматически скрыта через CSS @media) -->
+  <div id="pc-helper-bar" class="w-[412px] mb-2 px-3.5 py-2 rounded-2xl bg-[#18181c] border border-[#2c2c32] flex items-center justify-between text-xs text-zinc-300 shadow-lg">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+      <span><b>4 клика по аватарке</b> (или «Предмет») = Секретка</span>
+    </div>
+    <button onclick="openSecretModal()" class="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition">
+      Открыть секретку
+    </button>
+  </div>
+
+  <!-- ГЛАВНЫЙ КОНТЕЙНЕР ЭКРАНА ТЕЛЕФОНА -->
+  <div id="app-frame" class="flex flex-col justify-between select-none">
+
+    <!-- ВЕРХНИЙ ШАПКА-ХЕДЕР (Для Оценки, Школа, Расписание, Задания) -->
+    <header id="main-top-header" class="px-4 pt-3 pb-2.5 flex items-center justify-between bg-[#0a0a0c] z-20 shrink-0">
+      <div class="flex items-center gap-3">
+        <!-- Аватарка (4 клика открывают секретную панель) -->
+        <div id="top-avatar-trigger" onclick="handleSecretTriggerClick()" class="w-[44px] h-[44px] rounded-full bg-[#740b24] flex items-center justify-center cursor-pointer relative overflow-hidden shrink-0 active:scale-95 transition-transform">
+          <span id="header-avatar-initials" class="text-white font-bold text-[16px] tracking-tight">АЧ</span>
+          <!-- Опциональный белый росчерк как на скрине, если включен в секретке -->
+          <svg id="header-avatar-scribble" class="hidden absolute inset-0 w-full h-full" viewBox="0 0 44 44" fill="none">
+            <path d="M10 14C16 20 26 28 32 33M12 28C18 22 25 14 29 11M8 21C18 21 26 24 35 26" stroke="white" stroke-width="5" stroke-linecap="round"/>
+          </svg>
+        </div>
+
+        <!-- ФИО и подпись Ученик -->
+        <div onclick="handleSecretTriggerClick()" class="flex flex-col justify-center cursor-pointer">
+          <div id="header-student-name-clean" class="text-[16px] font-semibold text-white leading-tight tracking-tight">
+            Александр Чернышев
+          </div>
+          <!-- Замазанное белым ФИО (если включен режим 1-в-1 со скрином) -->
+          <div id="header-student-name-scribble" class="hidden h-[20px] w-[210px] relative">
+            <svg viewBox="0 0 220 24" class="w-full h-full">
+              <path d="M4 15 Q 50 6, 110 11 T 205 9 M 12 19 Q 80 12, 165 16 M 6 10 Q 95 4, 185 7" stroke="#ffffff" stroke-width="7" stroke-linecap="round" fill="none"/>
+            </svg>
+          </div>
+          <div class="text-[14px] text-[#8e8e93] leading-tight mt-0.5">Ученик</div>
+        </div>
+      </div>
+
+      <!-- Иконка колокольчика уведомлений -->
+      <button class="p-1.5 text-white opacity-95 active:opacity-60">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- ОСНОВНАЯ ПРОКРУЧИВАЕМАЯ ОБЛАСТЬ ВКЛАДОК -->
+    <main id="main-scroll-area" class="flex-1 overflow-y-auto no-scrollbar relative pb-36">
+
+      <!-- ================= ВКЛАДКА 1: ОЦЕНКИ ================= -->
+      <section id="tab-grades" class="px-3 pt-1">
+        <!-- Список предметов (По предмету) -->
+        <div id="grades-by-subject-list" class="space-y-2.5"></div>
+
+        <!-- Список оценок (По дате) -->
+        <div id="grades-by-date-list" class="hidden space-y-3 pt-1"></div>
+      </section>
+
+      <!-- ================= ВКЛАДКА 2: РАСПИСАНИЕ ================= -->
+      <section id="tab-schedule" class="hidden px-3 pt-1 space-y-2.5">
+        <div class="flex items-center justify-between px-1 py-2 text-[#8e8e93] text-xs font-semibold uppercase tracking-wider">
+          <span>Понедельник, 9 ноября</span>
+          <span>1 смена</span>
+        </div>
+        <div class="card-surface p-4 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-[#8e8e93] mb-1">1 урок • 08:30 – 09:10 • каб. 304</div>
+            <div class="text-[17px] font-semibold text-white">Алгебра и начала математического анализа</div>
+          </div>
+          <div class="grade-dashed-box px-3 py-1.5 text-white font-bold text-[16px]">4</div>
+        </div>
+        <div class="card-surface p-4 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-[#8e8e93] mb-1">2 урок • 09:20 – 10:00 • каб. 212</div>
+            <div class="text-[17px] font-semibold text-white">Физика</div>
+          </div>
+        </div>
+        <div class="card-surface p-4 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-[#8e8e93] mb-1">3 урок • 10:15 – 10:55 • каб. 108</div>
+            <div class="text-[17px] font-semibold text-white">Русский язык</div>
+          </div>
+          <div class="grade-dashed-box px-3 py-1.5 text-white font-bold text-[16px]">5</div>
+        </div>
+        <div class="card-surface p-4 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-[#8e8e93] mb-1">4 урок • 11:10 – 11:50 • каб. 304</div>
+            <div class="text-[17px] font-semibold text-white">Геометрия</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ВКЛАДКА 3: ЗАДАНИЯ ================= -->
+      <section id="tab-tasks" class="hidden px-3 pt-1 space-y-2.5">
+        <div class="flex items-center justify-between px-1 py-2 text-[#8e8e93] text-xs font-semibold uppercase tracking-wider">
+          <span>Актуальные домашние задания</span>
+        </div>
+        <div class="card-surface p-4">
+          <div class="text-xs text-[#8e8e93] mb-1">Алгебра и начала математического анализа</div>
+          <div class="text-[16px] font-medium text-white">§ 12, решить № 12.4 (а, б), № 12.7</div>
+        </div>
+        <div class="card-surface p-4">
+          <div class="text-xs text-[#8e8e93] mb-1">Биология</div>
+          <div class="text-[16px] font-medium text-white">Подготовить конспект по теме «Клеточный метаболизм», стр. 64–68</div>
+        </div>
+        <div class="card-surface p-4">
+          <div class="text-xs text-[#8e8e93] mb-1">География</div>
+          <div class="text-[16px] font-medium text-white">Заполнить контурную карту, ответить на вопросы после § 9</div>
+        </div>
+      </section>
+
+      <!-- ================= ВКЛАДКА 4: ШКОЛА (1-в-1 Скриншот 2) ================= -->
+      <section id="tab-school" class="hidden px-3 pt-2 space-y-3">
+        <!-- Заголовок СЕРВИСЫ / РАЗВЕРНУТЬ -->
+        <div class="flex items-center justify-between px-1 pt-1 pb-0.5">
+          <span class="text-[13px] font-semibold text-[#8e8e93] tracking-wide uppercase">СЕРВИСЫ</span>
+          <button class="flex items-center gap-1 text-[13px] font-semibold text-[#8e8e93] tracking-wide uppercase">
+            <span>РАЗВЕРНУТЬ</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Карточка СЕРВИСЫ (сетка 3x2) -->
+        <div class="card-surface p-5">
+          <div class="grid grid-cols-3 gap-y-5 gap-x-2 text-center">
+            <!-- 1. Питание -->
+            <div class="flex flex-col items-center">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #ffb703 0%, #f77f00 100%);">
+                <svg viewBox="0 0 54 54" class="w-full h-full">
+                  <circle cx="42" cy="22" r="14" fill="#ffffff" opacity="0.95"/>
+                  <ellipse cx="22" cy="40" rx="16" ry="9" fill="#ffffff" opacity="0.92"/>
+                  <path d="M6 34 Q 25 26, 46 38" stroke="#f77f00" stroke-width="3" fill="none"/>
+                </svg>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Питание</span>
+            </div>
+
+            <!-- 2. Посещаемость -->
+            <div class="flex flex-col items-center">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #7209b7 0%, #4361ee 100%);">
+                <svg viewBox="0 0 54 54" class="w-full h-full">
+                  <path d="M18 14 C 34 10, 44 22, 32 32 L 22 40" stroke="white" stroke-width="7" stroke-linecap="round" fill="none"/>
+                  <polygon points="14,42 18,27 30,39" fill="white"/>
+                </svg>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Посещаемость</span>
+            </div>
+
+            <!-- 3. Предметы -->
+            <div class="flex flex-col items-center cursor-pointer" onclick="switchTab('grades')">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);">
+                <svg viewBox="0 0 54 54" class="w-full h-full">
+                  <rect x="14" y="8" width="26" height="36" rx="4" transform="rotate(14 27 27)" fill="white" opacity="0.95"/>
+                  <rect x="12" y="10" width="24" height="34" rx="3" transform="rotate(6 24 27)" fill="#c4b5fd" opacity="0.65"/>
+                </svg>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Предметы</span>
+            </div>
+
+            <!-- 4. Подготовка к ЕГЭ -->
+            <div class="flex flex-col items-center">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);">
+                <svg viewBox="0 0 54 54" class="w-full h-full">
+                  <rect x="10" y="12" width="32" height="30" rx="6" transform="rotate(-10 26 27)" fill="#c7d2fe" opacity="0.45"/>
+                  <line x1="16" y1="20" x2="30" y2="16" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+                  <line x1="17" y1="27" x2="27" y2="24" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+                  <path d="M29 33 L 34 38 L 43 26" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Подготовка к<br>ЕГЭ</span>
+            </div>
+
+            <!-- 5. Итоговые оценки -->
+            <div class="flex flex-col items-center cursor-pointer" onclick="switchTab('grades')">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #ec4899 0%, #e11d48 100%);">
+                <span class="text-white font-extrabold text-[40px] leading-none translate-x-1.5 translate-y-1 opacity-95">5</span>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Итоговые оценки</span>
+            </div>
+
+            <!-- 6. Контрольные -->
+            <div class="flex flex-col items-center">
+              <div class="w-[54px] h-[54px] rounded-[16px] overflow-hidden shadow-md mb-2 flex items-center justify-center" style="background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);">
+                <svg viewBox="0 0 54 54" class="w-full h-full">
+                  <circle cx="27" cy="44" r="18" fill="white" opacity="0.25"/>
+                  <rect x="23.5" y="10" width="7" height="19" rx="3.5" fill="white"/>
+                  <circle cx="27" cy="37" r="4" fill="white"/>
+                </svg>
+              </div>
+              <span class="text-[13px] text-white font-medium leading-tight">Контрольные</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Карточка ПОСЕЩАЕМОСТЬ -->
+        <div class="card-surface p-4">
+          <div class="inline-block px-3 py-1 rounded-xl bg-[#2a1c40] text-[#a67aff] text-[13px] font-bold uppercase tracking-wide mb-6">
+            ПОСЕЩАЕМОСТЬ
+          </div>
+          <div class="flex items-center justify-between pt-1">
+            <span class="text-[#8e8e93] text-[17px]">план. пропуски</span>
+            <div class="w-7 h-7 rounded-full bg-[#2c2c2e] flex items-center justify-center text-white font-bold text-sm">
+              –
+            </div>
+          </div>
+        </div>
+
+        <!-- Карточка РЕЙТИНГ (Школа) -->
+        <div class="card-surface p-4">
+          <div class="inline-block px-3 py-1 rounded-xl bg-[#192846] text-[#599bff] text-[13px] font-bold uppercase tracking-wide mb-4">
+            РЕЙТИНГ
+          </div>
+
+          <div id="school-rating-container" class="space-y-3.5">
+            <!-- Заполняется динамически из JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ВКЛАДКА 5: ПРОФИЛЬ (1-в-1 Скриншот 3) ================= -->
+      <section id="tab-profile" class="hidden px-3 pt-8 space-y-3">
+        <!-- Верхний блок с большой аватаркой -->
+        <div class="relative mt-6">
+          <!-- Боковые круглые иконки шестеренки и профиля -->
+          <div class="flex justify-center items-center gap-28 -mb-7 relative z-10">
+            <button onclick="handleSecretTriggerClick()" class="w-11 h-11 rounded-full bg-[#1c1c1e] border-4 border-[#0a0a0c] flex items-center justify-center text-[#5282ff]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66Z"/>
+              </svg>
+            </button>
+            <button class="w-11 h-11 rounded-full bg-[#1c1c1e] border-4 border-[#0a0a0c] flex items-center justify-center text-[#5282ff]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Большая бордовая аватарка по центру (4 клика = секретка) -->
+          <div onclick="handleSecretTriggerClick()" class="w-[108px] h-[108px] rounded-full bg-[#740b24] border-[6px] border-[#0a0a0c] mx-auto relative z-20 -mt-12 flex items-center justify-center cursor-pointer active:scale-95 transition-transform">
+            <span id="profile-avatar-initials" class="text-white font-bold text-[36px]">АЧ</span>
+            <svg id="profile-avatar-scribble" class="hidden absolute inset-0 w-full h-full p-2" viewBox="0 0 100 100" fill="none">
+              <path d="M22 25 L75 78 M32 18 L52 78 M18 52 L82 40 M25 75 C45 60 65 72 82 85" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+
+          <!-- Карточка с именем под аватаркой -->
+          <div class="card-surface pt-14 pb-5 px-4 -mt-12 text-center">
+            <div id="profile-student-name-clean" class="text-[20px] font-bold text-white">Александр Чернышев</div>
+            <div id="profile-student-name-scribble" class="hidden mx-auto w-[260px] h-[28px]">
+              <svg viewBox="0 0 260 32" class="w-full h-full">
+                <path d="M15 16 Q 130 6, 240 16 M 25 23 Q 140 15, 235 24" stroke="white" stroke-width="8" stroke-linecap="round" fill="none"/>
+              </svg>
+            </div>
+            <div class="text-[#8e8e93] text-[15px] mt-1">Ученик</div>
+          </div>
+        </div>
+
+        <!-- Группа 1: Представители, Профиль Сферум -->
+        <div class="card-surface divide-y divide-[#28282c] px-4">
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#1d2c3f] flex items-center justify-center text-[#55a6ff]">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+              </div>
+              <span class="text-[17px] text-white font-medium">Представители</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#252238] flex items-center justify-center">
+                <div class="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-500 via-indigo-400 to-cyan-300"></div>
+              </div>
+              <span class="text-[17px] text-white font-medium">Профиль Сферум</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-[#ef4444] text-white text-xs font-bold flex items-center justify-center">!</span>
+              <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Группа 2: Мероприятия, Уведомления -->
+        <div class="card-surface divide-y divide-[#28282c] px-4">
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#182e2c] flex items-center justify-center text-[#34d399]">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z"/>
+                </svg>
+              </div>
+              <span class="text-[17px] text-white font-medium">Мероприятия</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#331c28] flex items-center justify-center text-[#f472b6]">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 22c1.1 0 2-.9 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                </svg>
+              </div>
+              <span class="text-[17px] text-white font-medium">Уведомления</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </div>
+
+        <!-- Группа 3: Задать вопрос, Отправить отчёт об ошибке -->
+        <div class="card-surface divide-y divide-[#28282c] px-4">
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#27233a] flex items-center justify-center text-[#a78bfa]">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                </svg>
+              </div>
+              <span class="text-[17px] text-white font-medium">Задать вопрос</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+
+          <div class="py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-[#332022] flex items-center justify-center text-[#fb7185]">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                </svg>
+              </div>
+              <span class="text-[17px] text-white font-medium">Отправить отчёт об ошибке</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ПЛАВАЮЩИЙ ПЕРЕКЛЮЧАТЕЛЬ "По дате / По предмету" (только на вкладке Оценки) -->
+    <div id="grades-bottom-switcher" class="absolute bottom-[68px] left-0 right-0 z-20 px-3 pt-2.5 pb-2 bg-[#1c1c1e]/95 backdrop-blur-md border-t border-[#2a2a2e]">
+      <div class="bg-[#252528] rounded-full p-1 grid grid-cols-2">
+        <button id="btn-mode-date" onclick="setGradesViewMode('date')" class="py-2 rounded-full text-[15px] font-semibold text-white/80 transition">
+          По дате
+        </button>
+        <button id="btn-mode-subject" onclick="setGradesViewMode('subject')" class="py-2 rounded-full text-[15px] font-semibold bg-[#38383d] text-white shadow transition">
+          По предмету
+        </button>
+      </div>
+    </div>
+
+    <!-- НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ (5 вкладок) -->
+    <nav id="bottom-tab-bar" class="bg-[#1c1c1e] border-t border-[#28282c] pt-1.5 pb-2 px-2 z-30 shrink-0">
+      <div class="grid grid-cols-5 items-center">
+        <!-- 1. Расписание -->
+        <button onclick="switchTab('schedule')" id="nav-schedule" class="flex flex-col items-center justify-center gap-1 text-[#8e8e93]">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M7 4v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4"/>
+            <path d="M7 20v-5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v5"/>
+          </svg>
+          <span class="text-[11px] font-medium">Расписание</span>
+        </button>
+
+        <!-- 2. Оценки -->
+        <button onclick="switchTab('grades')" id="nav-grades" class="flex flex-col items-center justify-center gap-1 text-white">
+          <svg id="icon-grades" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          <span class="text-[11px] font-medium">Оценки</span>
+        </button>
+
+        <!-- 3. Задания -->
+        <button onclick="switchTab('tasks')" id="nav-tasks" class="flex flex-col items-center justify-center gap-1 text-[#8e8e93]">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <polyline points="9 12 11.2 14.2 15.5 9.8"/>
+          </svg>
+          <span class="text-[11px] font-medium">Задания</span>
+        </button>
+
+        <!-- 4. Школа -->
+        <button onclick="switchTab('school')" id="nav-school" class="flex flex-col items-center justify-center gap-1 text-[#8e8e93]">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/>
+            <circle cx="16.8" cy="7.2" r="3.2"/>
+            <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/>
+            <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>
+          </svg>
+          <span class="text-[11px] font-medium">Школа</span>
+        </button>
+
+        <!-- 5. Профиль -->
+        <button onclick="switchTab('profile')" id="nav-profile" class="flex flex-col items-center justify-center gap-1 text-[#8e8e93]">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 20c1.5-3.5 4.2-5 7-5s5.5 1.5 7 5"/>
+          </svg>
+          <span class="text-[11px] font-medium">Профиль</span>
+        </button>
+      </div>
+
+      <!-- Системная полоска индикатора внизу -->
+      <div class="w-[134px] h-[4.5px] bg-[#68686e] rounded-full mx-auto mt-2.5"></div>
+    </nav>
+
+    <!-- ========================================================================= -->
+    <!-- ДЕТАЛЬНЫЙ ЭКРАН ПРЕДМЕТА (1-в-1 Скриншот 4: Алгебра и начала мат. анализа) -->
+    <!-- ========================================================================= -->
+    <div id="subject-detail-screen" class="hidden absolute inset-0 bg-[#0a0a0c] z-40 flex flex-col justify-between overflow-y-auto no-scrollbar">
+      <div class="pb-10">
+        <!-- Фиолетово-розовая градиентная шапка -->
+        <div class="subject-gradient-header pt-3.5 pb-6 px-4 shadow-lg">
+          <div class="flex items-center justify-between relative">
+            <button onclick="closeSubjectDetail()" class="p-1.5 -ml-1.5 text-white active:opacity-60">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <!-- 4 клика по заголовку "Предмет" также открывают секретку прямо из карточки Алгебры -->
+            <span onclick="handleSecretTriggerClick()" class="text-[17px] font-semibold text-white cursor-pointer">
+              Предмет
+            </span>
+            <div class="w-6"></div>
+          </div>
+
+          <h1 id="detail-subject-title" onclick="handleSecretTriggerClick()" class="text-[24px] font-bold text-white text-center leading-[1.22] mt-4 px-2">
+            Алгебра и начала математического анализа
+          </h1>
+        </div>
+
+        <!-- КАРТОЧКА 1: АТТЕСТАЦИОННЫЙ ПЕРИОД 1 + ПЛИТКИ ОЦЕНОК -->
+        <div class="card-surface mx-3 mt-3.5 p-4">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-3">
+              <!-- Розовая иконка со звездой -->
+              <div class="w-[36px] h-[36px] rounded-[10px] bg-[#f7196d] flex items-center justify-center shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5-4.8-4.6 6.6-.9L12 2.5z"/>
+                </svg>
+              </div>
+              <div>
+                <div id="detail-period-title" class="text-[13.5px] font-bold text-[#8e8e93] uppercase tracking-wide leading-tight">
+                  АТТЕСТАЦИОННЫЙ ПЕРИОД 1
+                </div>
+                <div id="detail-period-dates" class="text-[15px] text-[#8e8e93] leading-tight mt-0.5">
+                  1 сентября – 13 ноября
+                </div>
+              </div>
+            </div>
+
+            <!-- Пунктирный бейдж среднего балла -->
+            <div id="detail-avg-badge" class="grade-dashed-box px-3 py-2 flex items-center gap-2 shrink-0">
+              <!-- Заполняется из JS -->
+            </div>
+          </div>
+
+          <!-- Сетка оценок 5 колонок -->
+          <div id="detail-grades-grid" class="grid grid-cols-5 gap-2.5 mt-4">
+            <!-- Плитки оценок рендерятся динамически -->
+          </div>
+        </div>
+
+        <!-- КАРТОЧКА 2: ДИНАМИКА (Интерактивный график) -->
+        <div class="card-surface mx-3 mt-3 p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2.5">
+              <!-- Розовая иконка со стрелкой тренда -->
+              <div class="w-[34px] h-[34px] rounded-[10px] bg-[#f7196d] flex items-center justify-center shrink-0">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                  <polyline points="16 7 22 7 22 13"></polyline>
+                </svg>
+              </div>
+              <span class="text-[14px] font-bold text-[#8e8e93] uppercase tracking-wide">ДИНАМИКА</span>
+              <span class="w-4 h-4 rounded-full border border-[#8e8e93] text-[#8e8e93] text-[11px] flex items-center justify-center font-serif italic">i</span>
+            </div>
+
+            <!-- Переключатель месяц / год -->
+            <div class="flex items-center gap-1.5">
+              <button id="chart-btn-month" onclick="toggleChartPeriod('month')" class="px-3.5 py-1.5 rounded-[16px] bg-[#2563eb] text-white text-[14px] font-semibold">
+                месяц
+              </button>
+              <button id="chart-btn-year" onclick="toggleChartPeriod('year')" class="px-3.5 py-1.5 rounded-[16px] bg-[#2c2c2e] text-white text-[14px] font-semibold">
+                год
+              </button>
+            </div>
+          </div>
+
+          <!-- SVG График динамики 1-в-1 -->
+          <div class="w-full pt-1">
+            <svg id="dynamics-svg" viewBox="0 0 348 186" class="w-full h-auto overflow-visible">
+              <!-- Заполняется из JS -->
+            </svg>
+          </div>
+
+          <!-- Легенда под графиком -->
+          <div class="flex items-center justify-between pt-2 px-1 text-[13.5px] text-[#8e8e93]">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#8e8e93] inline-block"></span>
+              <span>Средний балл класса</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#9b8afb] inline-block"></span>
+              <span>Твой средний балл</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- КАРТОЧКА 3: РЕЙТИНГ В КЛАССЕ -->
+        <div class="card-surface mx-3 mt-3 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2.5">
+              <div class="w-[34px] h-[34px] rounded-[10px] bg-[#f7196d] flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+                </svg>
+              </div>
+              <span class="text-[14px] font-bold text-[#8e8e93] uppercase tracking-wide">РЕЙТИНГ В КЛАССЕ</span>
+              <span class="w-4 h-4 rounded-full border border-[#8e8e93] text-[#8e8e93] text-[11px] flex items-center justify-center font-serif italic">i</span>
+            </div>
+            <svg class="text-[#8e8e93]" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+
+          <div id="subject-class-rating-rows" class="space-y-3.5">
+            <!-- Заполняется из JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Нижняя системная полоска индикатора на экране предмета -->
+      <div class="sticky bottom-0 w-full py-2 bg-gradient-to-t from-[#0a0a0c] to-transparent flex justify-center pointer-events-none">
+        <div class="w-[134px] h-[4.5px] bg-[#8e8e93]/70 rounded-full"></div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- СЕКРЕТНАЯ ПАНЕЛЬ РЕДАКТИРОВАНИЯ (Вызывается 4 кликами по аватарке)         -->
+    <!-- ========================================================================= -->
+    <div id="secret-modal" class="hidden absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col justify-end">
+      <div class="bg-[#18181c] border-t border-[#2e2e36] rounded-t-3xl max-h-[90%] flex flex-col overflow-hidden shadow-2xl">
+        <!-- Шапка секретной панели -->
+        <div class="px-5 py-3.5 border-b border-[#2a2a32] flex items-center justify-between bg-[#202026]">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+            <h2 class="text-[16px] font-bold text-white">Секретная панель оценок</h2>
+          </div>
+          <button onclick="closeSecretModal()" class="px-3 py-1 rounded-xl bg-[#2e2e38] text-white text-sm font-semibold">
+            Готово
+          </button>
+        </div>
+
+        <!-- Тело секретной панели -->
+        <div class="p-4 overflow-y-auto space-y-5 text-sm">
+
+          <!-- 1. ВЫБОР ПРЕДМЕТА И РЕДАКТИРОВАНИЕ ОЦЕНОК -->
+          <div class="bg-[#222228] p-3.5 rounded-2xl space-y-3 border border-[#2e2e36]">
+            <label class="block text-xs font-bold uppercase tracking-wider text-violet-400">
+              1. Выберите предмет для изменения
+            </label>
+            <select id="secret-subject-select" onchange="onSecretSubjectChange()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-3 py-2.5 text-white font-medium focus:outline-none focus:border-violet-500">
+            </select>
+
+            <!-- Быстрое добавление оценки -->
+            <div class="pt-1">
+              <div class="text-xs text-zinc-400 mb-1.5">Текущие оценки в карточке (нажмите на оценку, чтобы удалить):</div>
+              <div id="secret-grades-chips" class="flex flex-wrap gap-2 mb-3"></div>
+
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-xs text-zinc-400 mr-1">Добавить оценку:</span>
+                <button onclick="addGradeToSelectedSubject(5, 1)" class="px-3 py-1.5 rounded-xl bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-bold">+ 5</button>
+                <button onclick="addGradeToSelectedSubject(4, 1)" class="px-3 py-1.5 rounded-xl bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold">+ 4</button>
+                <button onclick="addGradeToSelectedSubject(3, 1)" class="px-3 py-1.5 rounded-xl bg-amber-600/30 border border-amber-500/40 text-amber-300 font-bold">+ 3</button>
+                <button onclick="addGradeToSelectedSubject(2, 1)" class="px-3 py-1.5 rounded-xl bg-rose-600/30 border border-rose-500/40 text-rose-300 font-bold">+ 2</button>
+              </div>
+            </div>
+
+            <!-- Средний балл и стрелка тренда -->
+            <div class="grid grid-cols-2 gap-2.5 pt-2 border-t border-[#2f2f38]">
+              <div>
+                <label class="block text-xs text-zinc-400 mb-1">Средний балл (или «—»)</label>
+                <div class="flex gap-1.5">
+                  <input id="secret-avg-input" type="text" oninput="updateSelectedSubjectAvgFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-3 py-2 text-white font-bold" placeholder="4.50" />
+                  <button onclick="autoCalcSubjectAverage()" title="Рассчитать по оценкам" class="px-2.5 py-2 rounded-xl bg-[#2e2e38] text-xs text-violet-300 font-semibold shrink-0">
+                    Авто
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs text-zinc-400 mb-1">Значок динамики</label>
+                <select id="secret-trend-select" onchange="updateSelectedSubjectAvgFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-2 text-white font-medium">
+                  <option value="down">▼ Красный (вниз)</option>
+                  <option value="up">▲ Зеленый (вверх)</option>
+                  <option value="none">Без значка</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. ГРАФИК ДИНАМИКИ И РЕЙТИНГ ПО ПРЕДМЕТУ -->
+          <div class="bg-[#222228] p-3.5 rounded-2xl space-y-3 border border-[#2e2e36]">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold uppercase tracking-wider text-violet-400">
+                2. График динамики (5 точек)
+              </label>
+              <button onclick="autoFitChartToAvg()" class="px-2.5 py-1 rounded-lg bg-violet-600/30 border border-violet-500/40 text-violet-300 text-xs font-semibold">
+                ✨ Подогнать под балл
+              </button>
+            </div>
+
+            <div>
+              <div class="text-xs text-zinc-400 mb-1">Твой средний балл (5 окт → 2 ноя):</div>
+              <div class="grid grid-cols-5 gap-1.5" id="secret-student-chart-inputs"></div>
+            </div>
+
+            <div>
+              <div class="text-xs text-zinc-400 mb-1">Средний балл класса (серый график):</div>
+              <div class="grid grid-cols-5 gap-1.5" id="secret-class-chart-inputs"></div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-[#2f2f38]">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Твое место (предм.)</label>
+                <input id="secret-subj-rank-place" type="number" oninput="updateSubjectRankFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Сосед сверху (место)</label>
+                <input id="secret-subj-neighbor-place" type="number" oninput="updateSubjectRankFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Балл соседа сверху</label>
+                <input id="secret-subj-neighbor-score" type="text" oninput="updateSubjectRankFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. ОБЩИЙ РЕЙТИНГ В РАЗДЕЛЕ "ШКОЛА" -->
+          <div class="bg-[#222228] p-3.5 rounded-2xl space-y-2.5 border border-[#2e2e36]">
+            <label class="block text-xs font-bold uppercase tracking-wider text-violet-400">
+              3. Общий рейтинг (вкладка «Школа»)
+            </label>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Твое место</label>
+                <input id="secret-school-place" type="number" oninput="updateSchoolRatingFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Твой общий балл</label>
+                <input id="secret-school-score" type="text" oninput="updateSchoolRatingFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Балл выше / ниже</label>
+                <input id="secret-school-above-score" type="text" oninput="updateSchoolRatingFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-2.5 py-1.5 text-white font-bold" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. ПРОФИЛЬ УЧЕНИКА И КАК ДОБАВИТЬ НА ЭКРАН ТЕЛЕФОНА -->
+          <div class="bg-[#222228] p-3.5 rounded-2xl space-y-3 border border-[#2e2e36]">
+            <label class="block text-xs font-bold uppercase tracking-wider text-violet-400">
+              4. Имя ученика и отображение
+            </label>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="col-span-2">
+                <label class="block text-[11px] text-zinc-400 mb-1">ФИО ученика</label>
+                <input id="secret-student-name" type="text" oninput="updateProfileFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-3 py-1.5 text-white font-medium" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Инициалы</label>
+                <input id="secret-student-initials" type="text" maxlength="3" oninput="updateProfileFromInput()" class="w-full bg-[#141418] border border-[#34343e] rounded-xl px-3 py-1.5 text-white font-bold text-center" />
+              </div>
+            </div>
+
+            <label class="flex items-center gap-2.5 pt-1 cursor-pointer">
+              <input id="secret-scribble-toggle" type="checkbox" onchange="updateProfileFromInput()" class="w-4 h-4 accent-violet-500 rounded" />
+              <span class="text-xs text-zinc-300">Показывать белую замазку поверх ФИО (как на скриншоте)</span>
+            </label>
+          </div>
+
+          <!-- Сброс к исходным значениям -->
+          <div class="flex items-center justify-between pt-1 pb-4">
+            <button onclick="resetAllToDefault()" class="px-3.5 py-2 rounded-xl bg-rose-950/60 border border-rose-700/40 text-rose-300 text-xs font-semibold">
+              Сбросить всё к исходным скриншотам
+            </button>
+            <button onclick="closeSecretModal()" class="px-5 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold">
+              Сохранить и закрыть
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // =========================================================================
+    // ИСХОДНЫЕ ДАННЫЕ (1-в-1 со скриншотов пользователя)
+    // =========================================================================
+    const STORAGE_KEY = 'school_diary_pwa_state_v1';
+
+    const DEFAULT_STATE = {
+      profile: {
+        name: 'Александр Чернышев',
+        initials: 'АЧ',
+        showScribble: false
+      },
+      schoolRating: {
+        place: 16,
+        score: '4,22',
+        aboveScore: '4,23',
+        belowScore: '4,20'
+      },
+      subjects: [
+        {
+          id: 'algebra',
+          name: 'Алгебра и начала математического анализа',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '3.33',
+          trend: 'down',
+          grades: [
+            { val: 2, weight: 1, date: '5 окт' },
+            { val: 2, weight: 1, date: '12 окт' },
+            { val: 4, weight: 1, date: '19 окт' },
+            { val: 4, weight: 1, date: '26 окт' },
+            { val: 5, weight: 1, date: '29 окт' },
+            { val: 3, weight: 1, date: '2 ноя' }
+          ],
+          chartStudent: [2.65, 2.65, 3.00, 3.00, 3.33],
+          chartClass: [3.38, 3.38, 3.44, 3.44, 3.56],
+          classRank: {
+            neighborPlace: 12,
+            neighborCount: '2 чел',
+            neighborScore: '3,43',
+            myPlace: 13
+          }
+        },
+        {
+          id: 'biology',
+          name: 'Биология',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '4.50',
+          trend: 'down',
+          grades: [
+            { val: 5, weight: 1, date: '8 окт' },
+            { val: 4, weight: 1, date: '15 окт' },
+            { val: 5, weight: 1, date: '22 окт' },
+            { val: 4, weight: 1, date: '30 окт' }
+          ],
+          chartStudent: [5.00, 4.50, 4.67, 4.67, 4.50],
+          chartClass: [4.10, 4.15, 4.20, 4.22, 4.25],
+          classRank: {
+            neighborPlace: 6,
+            neighborCount: '3 чел',
+            neighborScore: '4,60',
+            myPlace: 7
+          }
+        },
+        {
+          id: 'prob',
+          name: 'Вероятность и статистика',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '—',
+          trend: 'none',
+          grades: [],
+          chartStudent: [4.00, 4.00, 4.00, 4.00, 4.00],
+          chartClass: [4.10, 4.10, 4.15, 4.15, 4.20],
+          classRank: {
+            neighborPlace: 10,
+            neighborCount: '2 чел',
+            neighborScore: '4,20',
+            myPlace: 11
+          }
+        },
+        {
+          id: 'geography',
+          name: 'География',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '3.33',
+          trend: 'down',
+          grades: [
+            { val: 3, weight: 1, date: '10 окт' },
+            { val: 4, weight: 1, date: '19 окт' },
+            { val: 3, weight: 1, date: '28 окт' }
+          ],
+          chartStudent: [3.00, 3.50, 3.50, 3.33, 3.33],
+          chartClass: [3.90, 3.95, 4.00, 4.05, 4.08],
+          classRank: {
+            neighborPlace: 18,
+            neighborCount: '2 чел',
+            neighborScore: '3,50',
+            myPlace: 19
+          }
+        },
+        {
+          id: 'geometry',
+          name: 'Геометрия',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '4.00',
+          trend: 'down',
+          grades: [
+            { val: 4, weight: 1, date: '7 окт' },
+            { val: 5, weight: 1, date: '16 окт' },
+            { val: 3, weight: 1, date: '27 окт' },
+            { val: 4, weight: 1, date: '1 ноя' }
+          ],
+          chartStudent: [4.00, 4.50, 4.00, 4.00, 4.00],
+          chartClass: [3.70, 3.75, 3.80, 3.82, 3.85],
+          classRank: {
+            neighborPlace: 9,
+            neighborCount: '2 чел',
+            neighborScore: '4,12',
+            myPlace: 10
+          }
+        },
+        {
+          id: 'project',
+          name: 'Индивидуальный проект',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '—',
+          trend: 'none',
+          grades: [],
+          chartStudent: [4.50, 4.50, 4.50, 4.50, 4.50],
+          chartClass: [4.50, 4.50, 4.50, 4.50, 4.50],
+          classRank: {
+            neighborPlace: 1,
+            neighborCount: '5 чел',
+            neighborScore: '5,00',
+            myPlace: 2
+          }
+        },
+        {
+          id: 'english',
+          name: 'Иностранный язык (английский)',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '4.67',
+          trend: 'up',
+          grades: [
+            { val: 5, weight: 1, date: '6 окт' },
+            { val: 4, weight: 1, date: '18 окт' },
+            { val: 5, weight: 1, date: '31 окт' }
+          ],
+          chartStudent: [4.50, 4.50, 4.50, 4.60, 4.67],
+          chartClass: [4.15, 4.18, 4.20, 4.25, 4.30],
+          classRank: {
+            neighborPlace: 4,
+            neighborCount: '2 чел',
+            neighborScore: '4,75',
+            myPlace: 5
+          }
+        },
+        {
+          id: 'informatics',
+          name: 'Информатика',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '5.00',
+          trend: 'up',
+          grades: [
+            { val: 5, weight: 1, date: '9 окт' },
+            { val: 5, weight: 1, date: '23 окт' },
+            { val: 5, weight: 1, date: '3 ноя' }
+          ],
+          chartStudent: [5.00, 5.00, 5.00, 5.00, 5.00],
+          chartClass: [4.35, 4.40, 4.42, 4.45, 4.48],
+          classRank: {
+            neighborPlace: 1,
+            neighborCount: '4 чел',
+            neighborScore: '5,00',
+            myPlace: 1
+          }
+        },
+        {
+          id: 'russian',
+          name: 'Русский язык',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '4.25',
+          trend: 'up',
+          grades: [
+            { val: 4, weight: 1, date: '5 окт' },
+            { val: 4, weight: 1, date: '14 окт' },
+            { val: 5, weight: 1, date: '25 окт' },
+            { val: 4, weight: 1, date: '2 ноя' }
+          ],
+          chartStudent: [4.00, 4.00, 4.33, 4.33, 4.25],
+          chartClass: [3.85, 3.90, 3.92, 3.95, 3.98],
+          classRank: {
+            neighborPlace: 8,
+            neighborCount: '2 чел',
+            neighborScore: '4,33',
+            myPlace: 9
+          }
+        },
+        {
+          id: 'physics',
+          name: 'Физика',
+          period: 'Аттестационный период 1',
+          dates: '1 сентября – 13 ноября',
+          avg: '4.00',
+          trend: 'down',
+          grades: [
+            { val: 4, weight: 1, date: '11 окт' },
+            { val: 4, weight: 1, date: '24 окт' },
+            { val: 4, weight: 1, date: '1 ноя' }
+          ],
+          chartStudent: [4.00, 4.00, 4.00, 4.00, 4.00],
+          chartClass: [3.75, 3.80, 3.82, 3.85, 3.88],
+          classRank: {
+            neighborPlace: 10,
+            neighborCount: '3 чел',
+            neighborScore: '4,15',
+            myPlace: 11
+          }
+        }
+      ]
+    };
+
+    let state = loadState();
+    let currentTab = 'grades';
+    let gradesViewMode = 'subject';
+    let activeSubjectId = 'algebra';
+    let secretSelectedSubjectId = 'algebra';
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return JSON.parse(JSON.stringify(DEFAULT_STATE));
+        const parsed = JSON.parse(raw);
+        return { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), ...parsed };
+      } catch (e) {
+        return JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    // =========================================================================
+    // ИКОНКИ ТРЕНДА (▼ красный и ▲ зеленый со скругленными углами как в оригинале)
+    // =========================================================================
+    function getTrendIconHTML(trend) {
+      if (trend === 'down') {
+        return `<svg width="11" height="10" viewBox="0 0 12 11" fill="none" class="shrink-0">
+          <path d="M4.53 9.6C5.18 10.67 6.82 10.67 7.47 9.6L11.2 3.45C11.88 2.33 11.07 0.9 9.73 0.9H2.27C0.93 0.9 0.12 2.33 0.8 3.45L4.53 9.6Z" fill="#f26b6b"/>
+        </svg>`;
+      }
+      if (trend === 'up') {
+        return `<svg width="11" height="10" viewBox="0 0 12 11" fill="none" class="shrink-0">
+          <path d="M4.53 1.4C5.18 0.33 6.82 0.33 7.47 1.4L11.2 7.55C11.88 8.67 11.07 10.1 9.73 10.1H2.27C0.93 10.1 0.12 8.67 0.8 7.55L4.53 1.4Z" fill="#4cd964"/>
+        </svg>`;
+      }
+      return '';
+    }
+
+    // =========================================================================
+    // РЕНДЕР ШАПКИ И ПРОФИЛЯ
+    // =========================================================================
+    function renderProfileAndHeader() {
+      const { name, initials, showScribble } = state.profile;
+
+      document.getElementById('header-avatar-initials').textContent = initials || 'АЧ';
+      document.getElementById('profile-avatar-initials').textContent = initials || 'АЧ';
+
+      document.getElementById('header-student-name-clean').textContent = name;
+      document.getElementById('profile-student-name-clean').textContent = name;
+
+      if (showScribble) {
+        document.getElementById('header-avatar-scribble').classList.remove('hidden');
+        document.getElementById('profile-avatar-scribble').classList.remove('hidden');
+        document.getElementById('header-student-name-clean').classList.add('hidden');
+        document.getElementById('header-student-name-scribble').classList.remove('hidden');
+        document.getElementById('profile-student-name-clean').classList.add('hidden');
+        document.getElementById('profile-student-name-scribble').classList.remove('hidden');
+      } else {
+        document.getElementById('header-avatar-scribble').classList.add('hidden');
+        document.getElementById('profile-avatar-scribble').classList.add('hidden');
+        document.getElementById('header-student-name-clean').classList.remove('hidden');
+        document.getElementById('header-student-name-scribble').classList.add('hidden');
+        document.getElementById('profile-student-name-clean').classList.remove('hidden');
+        document.getElementById('profile-student-name-scribble').classList.add('hidden');
+      }
+    }
+
+    // =========================================================================
+    // РЕНДЕР ВКЛАДКИ "ОЦЕНКИ" (Скриншот 1)
+    // =========================================================================
+    function renderGradesList() {
+      const container = document.getElementById('grades-by-subject-list');
+      container.innerHTML = '';
+
+      state.subjects.forEach((subj) => {
+        const hasScore = subj.avg && subj.avg !== '—' && subj.avg !== '-';
+        const card = document.createElement('div');
+        card.className = 'card-surface px-4 py-[18px] flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition-transform';
+        card.onclick = () => openSubjectDetail(subj.id);
+
+        const subtitleHTML = hasScore
+          ? `<div class="text-[15px] text-[#8e8e93] mt-1 leading-snug">${subj.period}</div>`
+          : '';
+
+        const badgeHTML = hasScore
+          ? `<div class="grade-dashed-box h-[44px] min-w-[82px] px-3 flex items-center justify-center gap-2 shrink-0">
+               ${getTrendIconHTML(subj.trend)}
+               <span class="text-[17px] font-bold text-white tracking-tight">${subj.avg}</span>
+             </div>`
+          : `<div class="grade-dashed-box w-[44px] h-[44px] flex items-center justify-center shrink-0">
+               <span class="text-[18px] font-semibold text-white">—</span>
+             </div>`;
+
+        card.innerHTML = `
+          <div class="pr-2">
+            <div class="text-[18px] font-semibold text-white leading-[1.25]">${subj.name}</div>
+            ${subtitleHTML}
+          </div>
+          ${badgeHTML}
+        `;
+        container.appendChild(card);
+      });
+
+      // Также рендерим режим "По дате"
+      const dateContainer = document.getElementById('grades-by-date-list');
+      dateContainer.innerHTML = '';
+      const allGrades = [];
+      state.subjects.forEach((s) => {
+        (s.grades || []).forEach((g) => {
+          allGrades.push({ subjectName: s.name, subjectId: s.id, ...g });
+        });
+      });
+
+      if (allGrades.length === 0) {
+        dateContainer.innerHTML = `<div class="text-center text-[#8e8e93] py-12">Нет выставленных оценок</div>`;
+      } else {
+        allGrades.slice().reverse().forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'card-surface px-4 py-3.5 flex items-center justify-between gap-3 cursor-pointer';
+          row.onclick = () => openSubjectDetail(item.subjectId);
+          row.innerHTML = `
+            <div>
+              <div class="text-xs text-[#8e8e93] mb-0.5">${item.date || 'Ноябрь'} • Ответ на уроке</div>
+              <div class="text-[16px] font-semibold text-white leading-snug">${item.subjectName}</div>
+            </div>
+            <div class="grade-tile w-[48px] h-[48px] shrink-0">
+              <span class="text-[18px] font-bold text-white -translate-x-0.5 -translate-y-0.5">${item.val}</span>
+              <span class="absolute right-2 bottom-1 text-[11px] text-[#d1d1d6]">${item.weight || 1}</span>
+            </div>
+          `;
+          dateContainer.appendChild(row);
+        });
+      }
+    }
+
+    function setGradesViewMode(mode) {
+      gradesViewMode = mode;
+      const btnDate = document.getElementById('btn-mode-date');
+      const btnSubj = document.getElementById('btn-mode-subject');
+      const listSubj = document.getElementById('grades-by-subject-list');
+      const listDate = document.getElementById('grades-by-date-list');
+
+      if (mode === 'subject') {
+        btnSubj.className = 'py-2 rounded-full text-[15px] font-semibold bg-[#38383d] text-white shadow transition';
+        btnDate.className = 'py-2 rounded-full text-[15px] font-semibold text-white/80 transition';
+        listSubj.classList.remove('hidden');
+        listDate.classList.add('hidden');
+      } else {
+        btnDate.className = 'py-2 rounded-full text-[15px] font-semibold bg-[#38383d] text-white shadow transition';
+        btnSubj.className = 'py-2 rounded-full text-[15px] font-semibold text-white/80 transition';
+        listDate.classList.remove('hidden');
+        listSubj.classList.add('hidden');
+      }
+    }
+
+    // =========================================================================
+    // РЕНДЕР ДЕТАЛЬНОЙ КАРТОЧКИ ПРЕДМЕТА (Скриншот 4: Алгебра)
+    // =========================================================================
+    function openSubjectDetail(subjectId) {
+      activeSubjectId = subjectId;
+      secretSelectedSubjectId = subjectId;
+      renderSubjectDetail();
+      const detailScreen = document.getElementById('subject-detail-screen');
+      detailScreen.classList.remove('hidden');
+      detailScreen.scrollTop = 0;
+    }
+
+    function closeSubjectDetail() {
+      document.getElementById('subject-detail-screen').classList.add('hidden');
+    }
+
+    function renderSubjectDetail() {
+      const subj = state.subjects.find((s) => s.id === activeSubjectId) || state.subjects[0];
+
+      document.getElementById('detail-subject-title').textContent = subj.name;
+      document.getElementById('detail-period-title').textContent = (subj.period || 'АТТЕСТАЦИОННЫЙ ПЕРИОД 1').toUpperCase();
+      document.getElementById('detail-period-dates').textContent = subj.dates || '1 сентября – 13 ноября';
+
+      // Средний балл в шапке периода
+      const badge = document.getElementById('detail-avg-badge');
+      const hasScore = subj.avg && subj.avg !== '—' && subj.avg !== '-';
+      badge.innerHTML = hasScore
+        ? `${getTrendIconHTML(subj.trend)}<span class="text-[17px] font-bold text-white">${subj.avg}</span>`
+        : `<span class="text-[17px] font-bold text-white px-2">—</span>`;
+
+      // Сетка оценок (5 в ряд)
+      const grid = document.getElementById('detail-grades-grid');
+      grid.innerHTML = '';
+      if (!subj.grades || subj.grades.length === 0) {
+        grid.innerHTML = `<div class="col-span-5 text-sm text-[#8e8e93] py-2">Нет оценок за выбранный период</div>`;
+      } else {
+        subj.grades.forEach((g) => {
+          const tile = document.createElement('div');
+          tile.className = 'grade-tile';
+          tile.innerHTML = `
+            <span class="text-[20px] font-bold text-white -translate-x-[3px] -translate-y-[2px]">${g.val}</span>
+            <span class="absolute right-[9px] bottom-[6px] text-[13px] font-medium text-[#d1d1d6]">${g.weight || 1}</span>
+          `;
+          grid.appendChild(tile);
+        });
+      }
+
+      // График динамики SVG
+      renderDynamicsChart(subj);
+
+      // Рейтинг в классе по предмету (Скриншот 4 внизу)
+      const rankContainer = document.getElementById('subject-class-rating-rows');
+      const myScoreComma = (subj.avg && subj.avg !== '—') ? String(subj.avg).replace('.', ',') : '—';
+      const neighborPlace = subj.classRank?.neighborPlace ?? 12;
+      const neighborScore = subj.classRank?.neighborScore ?? '3,43';
+      const myPlace = subj.classRank?.myPlace ?? (neighborPlace + 1);
+
+      rankContainer.innerHTML = `
+        <!-- Строка соседа по классу (как место 12 с коалой на скрине 4) -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <div class="diamond-badge bg-[#2c2c2e] text-white z-10">
+              <span>${neighborPlace}</span>
+            </div>
+            <div class="h-[12px] w-[72px] bg-[#2c2c2e] -ml-1"></div>
+            <div class="bg-[#2c2c2e] rounded-full py-1 pl-3 pr-1.5 -ml-1 flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-white">${subj.classRank?.neighborCount || '2 чел'}</span>
+              <div class="flex items-center -space-x-2">
+                <div class="w-7 h-7 rounded-full bg-[#d97724] border-2 border-[#2c2c2e] flex items-center justify-center text-xs">🦊</div>
+                <div class="w-7 h-7 rounded-full bg-[#8ecae6] border-2 border-[#2c2c2e] flex items-center justify-center text-sm">🐨</div>
+              </div>
+            </div>
+          </div>
+          <span class="text-[17px] font-bold text-white">${neighborScore}</span>
+        </div>
+
+        <!-- Строка самого ученика (фиолетовая полоса ниже) -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <div class="diamond-badge bg-[#6f3aff] text-white z-10">
+              <span>${myPlace}</span>
+            </div>
+            <div class="h-[12px] w-[96px] bg-[#6f3aff] -ml-1"></div>
+            <div class="bg-[#6f3aff] rounded-full py-1 pl-3 pr-1.5 -ml-1 flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-white">1 чел</span>
+              <div class="w-7 h-7 rounded-full bg-[#740b24] border-2 border-white/80 flex items-center justify-center text-[11px] font-bold text-white">
+                ${state.profile.initials || 'АЧ'}
+              </div>
+            </div>
+          </div>
+          <span class="text-[17px] font-bold text-white">${myScoreComma}</span>
+        </div>
+      `;
+    }
+
+    function renderDynamicsChart(subj) {
+      const svg = document.getElementById('dynamics-svg');
+      const dates = ['5 окт', '12 окт', '19 окт', '26 окт', '2 ноя'];
+      const xCoords = [46, 114, 182, 250, 318];
+      // Y-координаты для оценок: 5 -> 16, 4 -> 58, 3 -> 100, 2 -> 142
+      const valToY = (v) => {
+        const clamped = Math.max(2, Math.min(5, parseFloat(v) || 3));
+        return 142 - ((clamped - 2) / 3) * 126;
+      };
+
+      const yLevels = [
+        { label: '5', y: 16 },
+        { label: '4', y: 58 },
+        { label: '3', y: 100 },
+        { label: '2', y: 142 }
+      ];
+
+      let gridHTML = `
+        <!-- Вертикальная подпись "оценка" -->
+        <text x="12" y="82" fill="#8e8e93" font-size="12" text-anchor="middle" transform="rotate(-90 12 82)">оценка</text>
+      `;
+
+      // Горизонтальные пунктирные линии и цифры 5, 4, 3, 2
+      yLevels.forEach((lvl) => {
+        gridHTML += `
+          <text x="33" y="${lvl.y + 4}" fill="#8e8e93" font-size="12" text-anchor="end">${lvl.label}</text>
+          <line x1="46" y1="${lvl.y}" x2="318" y2="${lvl.y}" stroke="#3a3a3e" stroke-width="1.4" stroke-dasharray="8,5" />
+        `;
+      });
+
+      // Вертикальные пунктирные линии и подписи дат
+      xCoords.forEach((x, idx) => {
+        gridHTML += `
+          <line x1="${x}" y1="16" x2="${x}" y2="142" stroke="#3a3a3e" stroke-width="1.4" stroke-dasharray="8,5" />
+          <text x="${x + 12}" y="168" fill="#8e8e93" font-size="12" text-anchor="middle">${dates[idx]}</text>
+        `;
+      });
+
+      const classPts = (subj.chartClass && subj.chartClass.length === 5) ? subj.chartClass : [3.38, 3.38, 3.44, 3.44, 3.56];
+      const studentPts = (subj.chartStudent && subj.chartStudent.length === 5) ? subj.chartStudent : [2.65, 2.65, 3.00, 3.00, 3.33];
+
+      const classPointsAttr = classPts.map((v, i) => `${xCoords[i]},${valToY(v)}`).join(' ');
+      const studentPointsAttr = studentPts.map((v, i) => `${xCoords[i]},${valToY(v)}`).join(' ');
+
+      let classCircles = '';
+      classPts.forEach((v, i) => {
+        classCircles += `<circle cx="${xCoords[i]}" cy="${valToY(v)}" r="5.5" fill="#1c1c1e" stroke="#8e8e93" stroke-width="3" />`;
+      });
+
+      let studentCircles = '';
+      studentPts.forEach((v, i) => {
+        studentCircles += `<circle cx="${xCoords[i]}" cy="${valToY(v)}" r="5.5" fill="#1c1c1e" stroke="#9b8afb" stroke-width="3" />`;
+      });
+
+      svg.innerHTML = `
+        ${gridHTML}
+        <polyline fill="none" stroke="#8e8e93" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" points="${classPointsAttr}" />
+        ${classCircles}
+        <polyline fill="none" stroke="#9b8afb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" points="${studentPointsAttr}" />
+        ${studentCircles}
+      `;
+    }
+
+    function toggleChartPeriod(period) {
+      const btnM = document.getElementById('chart-btn-month');
+      const btnY = document.getElementById('chart-btn-year');
+      if (period === 'month') {
+        btnM.className = 'px-3.5 py-1.5 rounded-[16px] bg-[#2563eb] text-white text-[14px] font-semibold';
+        btnY.className = 'px-3.5 py-1.5 rounded-[16px] bg-[#2c2c2e] text-white text-[14px] font-semibold';
+      } else {
+        btnY.className = 'px-3.5 py-1.5 rounded-[16px] bg-[#2563eb] text-white text-[14px] font-semibold';
+        btnM.className = 'px-3.5 py-1.5 rounded-[16px] bg-[#2c2c2e] text-white text-[14px] font-semibold';
+      }
+    }
+
+    // =========================================================================
+    // РЕНДЕР ОБЩЕГО РЕЙТИНГА НА ВКЛАДКЕ "ШКОЛА" (Скриншот 2)
+    // =========================================================================
+    function renderSchoolRating() {
+      const place = parseInt(state.schoolRating.place, 10) || 16;
+      const score = state.schoolRating.score || '4,22';
+      const aboveScore = state.schoolRating.aboveScore || '4,23';
+      const belowScore = state.schoolRating.belowScore || '4,20';
+
+      const container = document.getElementById('school-rating-container');
+      container.innerHTML = `
+        <!-- Место выше (например, 15) -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <div class="diamond-badge bg-[#2c2c2e] text-white z-10">
+              <span>${place - 1}</span>
+            </div>
+            <div class="h-[12px] w-[115px] bg-[#2c2c2e] -ml-1"></div>
+            <div class="bg-[#2c2c2e] rounded-full py-1 pl-3 pr-1.5 -ml-1 flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-white">1 чел</span>
+              <div class="w-7 h-7 rounded-full bg-[#fde047] flex items-center justify-center text-base">🦁</div>
+            </div>
+          </div>
+          <span class="text-[17px] font-bold text-white">${aboveScore}</span>
+        </div>
+
+        <!-- Место самого ученика (например, 16 - фиолетовая плашка) -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <div class="diamond-badge bg-[#6f3aff] text-white z-10">
+              <span>${place}</span>
+            </div>
+            <div class="h-[12px] w-[115px] bg-[#6f3aff] -ml-1"></div>
+            <div class="bg-[#6f3aff] rounded-full py-1 pl-3 pr-1.5 -ml-1 flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-white">1 чел</span>
+              <div class="w-7 h-7 rounded-full bg-[#740b24] border border-white/80 flex items-center justify-center text-[11px] font-bold text-white">
+                ${state.profile.initials || 'АЧ'}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            ${getTrendIconHTML('up')}
+            <span class="text-[17px] font-bold text-white">${score}</span>
+          </div>
+        </div>
+
+        <!-- Место ниже (например, 17) -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <div class="diamond-badge bg-[#2c2c2e] text-white z-10">
+              <span>${place + 1}</span>
+            </div>
+            <div class="h-[12px] w-[115px] bg-[#2c2c2e] -ml-1"></div>
+            <div class="bg-[#2c2c2e] rounded-full py-1 pl-3 pr-1.5 -ml-1 flex items-center gap-2">
+              <span class="text-[13px] font-semibold text-white">1 чел</span>
+              <div class="w-7 h-7 rounded-full bg-[#fef08a] flex items-center justify-center text-base">🐰</div>
+            </div>
+          </div>
+          <span class="text-[17px] font-bold text-white">${belowScore}</span>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК НИЖНЕГО МЕНЮ
+    // =========================================================================
+    function switchTab(tabName) {
+      currentTab = tabName;
+      const tabs = ['grades', 'schedule', 'tasks', 'school', 'profile'];
+      tabs.forEach((t) => {
+        const sec = document.getElementById(`tab-${t}`);
+        const nav = document.getElementById(`nav-${t}`);
+        if (t === tabName) {
+          sec.classList.remove('hidden');
+          nav.classList.remove('text-[#8e8e93]');
+          nav.classList.add('text-white');
+        } else {
+          sec.classList.add('hidden');
+          nav.classList.remove('text-white');
+          nav.classList.add('text-[#8e8e93]');
+        }
+      });
+
+      // На вкладке "Профиль" верхний малый хедер скрыт (там большая аватарка по центру)
+      const topHeader = document.getElementById('main-top-header');
+      if (tabName === 'profile') {
+        topHeader.classList.add('hidden');
+      } else {
+        topHeader.classList.remove('hidden');
+      }
+
+      // Переключатель "По дате / По предмету" виден только на вкладке "Оценки"
+      const switcher = document.getElementById('grades-bottom-switcher');
+      if (tabName === 'grades') {
+        switcher.classList.remove('hidden');
+      } else {
+        switcher.classList.add('hidden');
+      }
+
+      document.getElementById('main-scroll-area').scrollTop = 0;
+    }
+
+    // =========================================================================
+    // СЕКРЕТНЫЙ ТРИГГЕР (4 КЛИКА ПО АВАТАРКЕ ИЛИ ЗАГОЛОВКУ)
+    // =========================================================================
+    let clickCount = 0;
+    let clickTimer = null;
+
+    function handleSecretTriggerClick() {
+      clickCount++;
+      if (clickTimer) clearTimeout(clickTimer);
+
+      if (clickCount >= 4) {
+        clickCount = 0;
+        openSecretModal();
+        return;
+      }
+
+      clickTimer = setTimeout(() => {
+        clickCount = 0;
+      }, 900);
+    }
+
+    // =========================================================================
+    // ЛОГИКА СЕКРЕТНОЙ ПАНЕЛИ УПРАВЛЕНИЯ ОЦЕНКАМИ
+    // =========================================================================
+    function openSecretModal() {
+      populateSecretModal();
+      document.getElementById('secret-modal').classList.remove('hidden');
+    }
+
+    function closeSecretModal() {
+      document.getElementById('secret-modal').classList.add('hidden');
+      renderAll();
+    }
+
+    function populateSecretModal() {
+      // Список предметов в селекте
+      const select = document.getElementById('secret-subject-select');
+      select.innerHTML = '';
+      state.subjects.forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name} (${s.avg})`;
+        if (s.id === secretSelectedSubjectId) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      renderSecretSubjectFields();
+
+      // Общий рейтинг школы
+      document.getElementById('secret-school-place').value = state.schoolRating.place;
+      document.getElementById('secret-school-score').value = state.schoolRating.score;
+      document.getElementById('secret-school-above-score').value = state.schoolRating.aboveScore;
+
+      // Профиль
+      document.getElementById('secret-student-name').value = state.profile.name;
+      document.getElementById('secret-student-initials').value = state.profile.initials;
+      document.getElementById('secret-scribble-toggle').checked = !!state.profile.showScribble;
+    }
+
+    function onSecretSubjectChange() {
+      secretSelectedSubjectId = document.getElementById('secret-subject-select').value;
+      renderSecretSubjectFields();
+    }
+
+    function renderSecretSubjectFields() {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId) || state.subjects[0];
+
+      // Чипсы оценок
+      const chips = document.getElementById('secret-grades-chips');
+      chips.innerHTML = '';
+      if (!subj.grades || subj.grades.length === 0) {
+        chips.innerHTML = `<span class="text-xs text-zinc-500">Оценок нет</span>`;
+      } else {
+        subj.grades.forEach((g, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'px-3 py-1.5 rounded-xl bg-[#2c2c34] hover:bg-rose-900/60 border border-[#3e3e4a] text-white font-bold flex items-center gap-1.5 transition';
+          btn.innerHTML = `<span>${g.val}</span><sub class="text-[10px] text-zinc-400">${g.weight || 1}</sub><span class="text-rose-400 text-xs ml-1">×</span>`;
+          btn.onclick = () => removeGradeFromSelectedSubject(idx);
+          chips.appendChild(btn);
+        });
+      }
+
+      document.getElementById('secret-avg-input').value = subj.avg;
+      document.getElementById('secret-trend-select').value = subj.trend || 'down';
+
+      // Поля 5 точек графика ученика
+      const studentInputs = document.getElementById('secret-student-chart-inputs');
+      studentInputs.innerHTML = '';
+      (subj.chartStudent || [3, 3, 3, 3, 3]).forEach((val, idx) => {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.05';
+        inp.min = '2';
+        inp.max = '5';
+        inp.value = val;
+        inp.className = 'w-full bg-[#141418] border border-[#34343e] rounded-lg px-1.5 py-1.5 text-center text-white font-bold text-xs';
+        inp.oninput = (e) => {
+          subj.chartStudent[idx] = parseFloat(e.target.value) || 3;
+          saveState();
+          renderAll();
+        };
+        studentInputs.appendChild(inp);
+      });
+
+      // Поля 5 точек графика класса
+      const classInputs = document.getElementById('secret-class-chart-inputs');
+      classInputs.innerHTML = '';
+      (subj.chartClass || [3.4, 3.4, 3.4, 3.5, 3.5]).forEach((val, idx) => {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.05';
+        inp.min = '2';
+        inp.max = '5';
+        inp.value = val;
+        inp.className = 'w-full bg-[#141418] border border-[#34343e] rounded-lg px-1.5 py-1.5 text-center text-zinc-300 font-semibold text-xs';
+        inp.oninput = (e) => {
+          subj.chartClass[idx] = parseFloat(e.target.value) || 3.5;
+          saveState();
+          renderAll();
+        };
+        classInputs.appendChild(inp);
+      });
+
+      // Рейтинг по предмету
+      document.getElementById('secret-subj-rank-place').value = subj.classRank?.myPlace ?? 13;
+      document.getElementById('secret-subj-neighbor-place').value = subj.classRank?.neighborPlace ?? 12;
+      document.getElementById('secret-subj-neighbor-score').value = subj.classRank?.neighborScore ?? '3,43';
+    }
+
+    function addGradeToSelectedSubject(val, weight) {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      subj.grades.push({ val, weight, date: '2 ноя' });
+      autoCalcSubjectAverage();
+    }
+
+    function removeGradeFromSelectedSubject(index) {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      subj.grades.splice(index, 1);
+      autoCalcSubjectAverage();
+    }
+
+    function autoCalcSubjectAverage() {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      if (!subj.grades || subj.grades.length === 0) {
+        subj.avg = '—';
+        subj.trend = 'none';
+      } else {
+        let total = 0;
+        let count = 0;
+        subj.grades.forEach((g) => {
+          const w = g.weight || 1;
+          total += g.val * w;
+          count += w;
+        });
+        const avgNum = total / count;
+        subj.avg = avgNum.toFixed(2);
+        subj.trend = avgNum >= 4.0 ? 'up' : 'down';
+        // Обновим последнюю точку графика под текущий средний балл
+        if (subj.chartStudent && subj.chartStudent.length === 5) {
+          subj.chartStudent[4] = parseFloat(avgNum.toFixed(2));
+        }
+      }
+      saveState();
+      populateSecretModal();
+      renderAll();
+    }
+
+    function updateSelectedSubjectAvgFromInput() {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      subj.avg = document.getElementById('secret-avg-input').value.trim() || '—';
+      subj.trend = document.getElementById('secret-trend-select').value;
+      saveState();
+      renderAll();
+    }
+
+    function autoFitChartToAvg() {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      const target = parseFloat(String(subj.avg).replace(',', '.')) || 4.33;
+      const p1 = Math.max(2.2, +(target - 0.65).toFixed(2));
+      const p2 = Math.max(2.2, +(target - 0.50).toFixed(2));
+      const p3 = Math.max(2.2, +(target - 0.25).toFixed(2));
+      const p4 = Math.max(2.2, +(target - 0.15).toFixed(2));
+      const p5 = +target.toFixed(2);
+      subj.chartStudent = [p1, p2, p3, p4, p5];
+      saveState();
+      renderSecretSubjectFields();
+      renderAll();
+    }
+
+    function updateSubjectRankFromInput() {
+      const subj = state.subjects.find((s) => s.id === secretSelectedSubjectId);
+      if (!subj) return;
+      subj.classRank = {
+        myPlace: parseInt(document.getElementById('secret-subj-rank-place').value, 10) || 12,
+        neighborPlace: parseInt(document.getElementById('secret-subj-neighbor-place').value, 10) || 11,
+        neighborCount: '2 чел',
+        neighborScore: document.getElementById('secret-subj-neighbor-score').value || '4,45'
+      };
+      saveState();
+      renderAll();
+    }
+
+    function updateSchoolRatingFromInput() {
+      state.schoolRating.place = parseInt(document.getElementById('secret-school-place').value, 10) || 16;
+      state.schoolRating.score = document.getElementById('secret-school-score').value || '4,22';
+      state.schoolRating.aboveScore = document.getElementById('secret-school-above-score').value || '4,23';
+      saveState();
+      renderAll();
+    }
+
+    function updateProfileFromInput() {
+      state.profile.name = document.getElementById('secret-student-name').value || 'Александр Чернышев';
+      state.profile.initials = document.getElementById('secret-student-initials').value || 'АЧ';
+      state.profile.showScribble = document.getElementById('secret-scribble-toggle').checked;
+      saveState();
+      renderAll();
+    }
+
+    function resetAllToDefault() {
+      state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      saveState();
+      populateSecretModal();
+      renderAll();
+    }
+
+    function renderAll() {
+      renderProfileAndHeader();
+      renderGradesList();
+      renderSchoolRating();
+      renderSubjectDetail();
+    }
+
+    // Инициализация динамического Web App Manifest для установки на главный экран телефона
+    function setupDynamicManifest() {
+      const manifest = {
+        name: 'Дневник',
+        short_name: 'Дневник',
+        start_url: '.',
+        display: 'standalone',
+        background_color: '#0a0a0c',
+        theme_color: '#0a0a0c',
+        icons: [
+          {
+            src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="42" fill="%23740b24"/><polygon points="96,36 114,74 156,80 126,109 133,150 96,130 59,150 66,109 36,80 78,74" fill="white"/></svg>',
+            sizes: '192x192',
+            type: 'image/svg+xml'
+          }
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = URL.createObjectURL(blob);
+      document.head.appendChild(link);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setupDynamicManifest();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
